@@ -20,7 +20,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".StubActivity" />
+        <activity
+            android:name=".StubActivity"
+            android:taskAffinity=".PluginTask"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="false" />
     </application>
 
 </manifest>

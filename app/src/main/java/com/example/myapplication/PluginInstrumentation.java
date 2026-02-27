@@ -2,17 +2,15 @@ package com.example.myapplication;
 
 import android.app.Activity;
 import android.app.Instrumentation;
+import android.content.ContextWrapper;
 import android.content.Intent;
+import android.os.Bundle;
 import android.util.Log;
 
-/**
- * Our Second Hook.
- * This intercepts the moment Android tries to create a screen object in memory.
- */
+import java.lang.reflect.Field;
+
 public class PluginInstrumentation extends Instrumentation {
     private static final String TAG = "CloneApp_Hook";
-
-    // The real instrumentation we are replacing
     private Instrumentation base;
 
     public PluginInstrumentation(Instrumentation base) {
@@ -21,20 +19,46 @@ public class PluginInstrumentation extends Instrumentation {
 
     @Override
     public Activity newActivity(ClassLoader cl, String className, Intent intent) throws InstantiationException, IllegalAccessException, ClassNotFoundException {
-        Log.e(TAG, "🕵️ INSTRUMENTATION: OS is trying to create -> " + className);
-
-        // 1. Check if the intent has our hidden "backpack"
         Intent targetIntent = intent.getParcelableExtra("EXTRA_TARGET_INTENT");
 
         if (targetIntent != null && targetIntent.getComponent() != null) {
             String realClassName = targetIntent.getComponent().getClassName();
-            Log.e(TAG, "🕵️ INSTRUMENTATION: Found hidden intent! Changing " + className + " back to " + realClassName);
 
-            // 2. THE UN-SWITCH! We tell the system to build the hidden TargetActivity instead of the StubActivity
+            if (PluginManager.getInstance().getPluginClassLoader() != null) {
+                cl = PluginManager.getInstance().getPluginClassLoader();
+            }
             className = realClassName;
         }
-
-        // 3. Let the system actually build the screen using our new class name
         return super.newActivity(cl, className, intent);
+    }
+
+    @Override
+    public void callActivityOnCreate(Activity activity, Bundle icicle) {
+
+        // --- PHASE 5: APPLYING THE FAKE ID ---
+        Intent intent = activity.getIntent();
+        Intent targetIntent = intent.getParcelableExtra("EXTRA_TARGET_INTENT");
+
+        if (targetIntent != null && targetIntent.getComponent() != null) {
+            String guestPackageName = targetIntent.getComponent().getPackageName();
+
+            try {
+                // 1. Create the Fake ID using the Guest's real package name
+                PluginContextWrapper fakeContext = new PluginContextWrapper(activity.getBaseContext(), guestPackageName);
+
+                // 2. Break into the Activity's brain (mBase) and swap the real Context for our Fake ID
+                Field mBaseField = ContextWrapper.class.getDeclaredField("mBase");
+                mBaseField.setAccessible(true);
+                mBaseField.set(activity, fakeContext);
+
+                Log.e(TAG, "🎭 FAKE ID APPLIED: The app now legally thinks its name is: " + activity.getPackageName());
+
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Failed to apply Fake ID: " + e.getMessage());
+            }
+        }
+
+        // Let the Activity start normally (it is now wearing our mask!)
+        super.callActivityOnCreate(activity, icicle);
     }
 }
